@@ -1,54 +1,46 @@
 ﻿#include <iostream>
 #include <string>
 #include <windows.h>
-#include "move_cursor.h"
+
+auto actual_clr_bol() {
+	DWORD dwMode = 0;
+	auto consoleHandle = GetStdHandle(STD_OUTPUT_HANDLE);
+	GetConsoleMode(consoleHandle, &dwMode);
+	dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+	SetConsoleMode(consoleHandle, dwMode);
+	std::cout << "\x1b[1K";
+}
+
 
 auto emulate_clr_bol() {
 
-	HANDLE consoleHandle = GetStdHandle(STD_OUTPUT_HANDLE);
-	// SetConsoleTextAttribute(consoleHandle, FOREGROUND_GREEN | FOREGROUND_INTENSITY | BACKGROUND_BLUE);
-	
-	std::string s = "hello world, i am emulating clr_bol,\n hope this disappears";
-	std::cout << s;
+	auto consoleHandle = GetStdHandle(STD_OUTPUT_HANDLE);
+	CONSOLE_SCREEN_BUFFER_INFO buffInfo;
+	GetConsoleScreenBufferInfo(consoleHandle, &buffInfo);
 
-	if (!move_cursor(consoleHandle, -10, 0)) {
-		// move_cursor returned false
-		return false;
-	}
+	COORD spacesStartPoint{ 0, buffInfo.dwCursorPosition.Y};
+	DWORD written, numSpaces = buffInfo.dwCursorPosition.X + 1;
 
-	CONSOLE_SCREEN_BUFFER_INFO bufferInfo;
-	if (!GetConsoleScreenBufferInfo(consoleHandle, &bufferInfo)) {
-		// Error in fetching screen buffer info
-		return false;
-	}
-	
-	SMALL_RECT contentToMove = { bufferInfo.dwCursorPosition.X, bufferInfo.dwCursorPosition.Y, bufferInfo.dwSize.X, bufferInfo.dwCursorPosition.Y };
-	CHAR_INFO fill{' ', bufferInfo.wAttributes};
-	COORD dest{ 0,bufferInfo.dwCursorPosition.Y };
-
-	// TODO: Fix the wrapping of attributes on the same row
-	//WORD attr = 0;
-	//DWORD written;
-	//FillConsoleOutputAttribute(consoleHandle, attr, bufferInfo.dwCursorPosition.X, { 0, bufferInfo.dwCursorPosition.Y }, &written);
-
-	// Move the remaining line to the left
-	if (!ScrollConsoleScreenBuffer(consoleHandle, &contentToMove, nullptr, dest, &fill)) {
-		// ScrollConsoleScreenBuffer Failed
-		return false;
-	}
-
-	// Position cursor to beginning of line
-	if (!SetConsoleCursorPosition(consoleHandle, dest)) {
-		// SetConsoleCursorPosition Failed
-		return false;
-	}
-	return true;
+	FillConsoleOutputCharacter(consoleHandle, ' ', numSpaces, spacesStartPoint, &written);
+	FillConsoleOutputAttribute(consoleHandle, buffInfo.wAttributes, numSpaces, spacesStartPoint, &written);
 }
 
 
 int main() {
-	emulate_clr_bol();
 
+	for (auto i = 1; i <= 50; i++) {
+		std::cout << "$line " << i << '\n';
+	}
+	
+	auto consoleHandle = GetStdHandle(STD_OUTPUT_HANDLE);
+	CONSOLE_SCREEN_BUFFER_INFO buffInfo;
+	GetConsoleScreenBufferInfo(consoleHandle, &buffInfo);
+	SetConsoleCursorPosition(consoleHandle, { 5, buffInfo.dwCursorPosition.Y - 25 });
+	SetConsoleTextAttribute(consoleHandle, FOREGROUND_GREEN | FOREGROUND_INTENSITY | BACKGROUND_RED | BACKGROUND_INTENSITY);
+
+	emulate_clr_bol();
+	// actual_clr_bol();
+	
 	char bogus;
 	std::cin >> bogus;
 
