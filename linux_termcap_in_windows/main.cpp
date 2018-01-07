@@ -524,17 +524,80 @@ namespace emlcw {
 				WriteConsole(_h, clear.c_str(), clear.size(), &charsWritten, nullptr);
 			}
 			else {
-				GetConsoleScreenBufferInfo(_h, &buffInfo);
 
+				GetConsoleScreenBufferInfo(_h, &buffInfo);
 				DWORD totalChars = buffInfo.dwSize.X * buffInfo.dwSize.Y;
 				COORD startPos = { 0, 0 };
 				DWORD charsWritten = 0;
 
 				FillConsoleOutputCharacter(_h, ' ', totalChars, startPos, &charsWritten);
-
+				FillConsoleOutputAttribute(_h, buffInfo.wAttributes, totalChars, startPos, &charsWritten); // Resetting attributes
 				SetConsoleCursorPosition(_h, startPos); // Position cursor to home
-				SetConsoleTextAttribute(_h, buffInfo.wAttributes); // Reset text attributes
-				// FillConsoleOutputAttribute(consoleHandle, bufferInfo.wAttributes, totalChars, startPos, &charsWritten);
+			}
+		}
+		void emulate_clr_bol() {
+			GetConsoleScreenBufferInfo(_h, &buffInfo);
+
+			COORD spacesStartPoint{ 0, buffInfo.dwCursorPosition.Y };
+			DWORD written, numSpaces = buffInfo.dwCursorPosition.X + 1;
+
+			FillConsoleOutputCharacter(_h, ' ', numSpaces, spacesStartPoint, &written);
+			FillConsoleOutputAttribute(_h, buffInfo.wAttributes, numSpaces, spacesStartPoint, &written);
+		}
+
+		void emulate_clr_eol() {
+			GetConsoleScreenBufferInfo(_h, &buffInfo);
+
+			COORD spacesStartPoint = buffInfo.dwCursorPosition;
+			DWORD written, numSpaces = buffInfo.dwSize.X - buffInfo.dwCursorPosition.X;
+
+			FillConsoleOutputCharacter(_h, ' ', numSpaces, spacesStartPoint, &written);
+			FillConsoleOutputAttribute(_h, buffInfo.wAttributes, numSpaces, spacesStartPoint, &written);
+		}
+
+		void emulate_il(short numLines = 1) {
+			if (numLines > 0) {
+				GetConsoleScreenBufferInfo(_h, &buffInfo);
+				auto remainingLines = buffInfo.srWindow.Bottom - buffInfo.dwCursorPosition.Y + 1;
+				numLines = min(remainingLines, numLines);
+				auto numRowsToMove = remainingLines - numLines;
+
+				COORD spacesStartPoint{ 0, buffInfo.dwCursorPosition.Y };
+				DWORD written, numSpaces;
+
+				if (numRowsToMove > 0) {
+					SMALL_RECT contentToMove{ 0, buffInfo.dwCursorPosition.Y , buffInfo.dwSize.X,  buffInfo.dwCursorPosition.Y + numRowsToMove - 1 };
+					CHAR_INFO charToFill{ CHAR(' '), buffInfo.wAttributes };
+					ScrollConsoleScreenBuffer(_h, &contentToMove, nullptr, { 0, buffInfo.dwCursorPosition.Y + numLines }, &charToFill);
+				}
+
+				numSpaces = numLines * buffInfo.dwSize.X;
+				FillConsoleOutputCharacter(_h, ' ', numSpaces, spacesStartPoint, &written);
+				FillConsoleOutputAttribute(_h, buffInfo.wAttributes, numSpaces, spacesStartPoint, &written);
+
+				SetConsoleCursorPosition(_h, spacesStartPoint);
+			}
+		}
+
+		void emulate_dl(short numLines = 1) {
+			if (numLines > 0) {
+				GetConsoleScreenBufferInfo(_h, &buffInfo);
+				auto remainingLines = buffInfo.srWindow.Bottom - buffInfo.dwCursorPosition.Y + 1;
+				numLines = min(remainingLines, numLines);
+				auto numRowsToMove = remainingLines - numLines;
+
+				if (numRowsToMove > 0) {
+					SMALL_RECT contentToMove{ 0, buffInfo.dwCursorPosition.Y + numLines, buffInfo.dwSize.X,  buffInfo.srWindow.Bottom };
+					CHAR_INFO charToFill{ CHAR(' '), buffInfo.wAttributes };
+					ScrollConsoleScreenBuffer(_h, &contentToMove, nullptr, { 0, buffInfo.dwCursorPosition.Y }, &charToFill);
+				}
+
+				COORD spacesStartPoint{ 0, buffInfo.dwCursorPosition.Y + numRowsToMove };
+				DWORD written, numSpaces = numLines * buffInfo.dwSize.X;
+				FillConsoleOutputCharacter(_h, ' ', numSpaces, spacesStartPoint, &written);
+				FillConsoleOutputAttribute(_h, buffInfo.wAttributes, numSpaces, spacesStartPoint, &written);
+
+				SetConsoleCursorPosition(_h, { 0, buffInfo.dwCursorPosition.Y });
 			}
 		}
 	public:
@@ -551,14 +614,14 @@ namespace emlcw {
 			}
 		}
 
-		auto getCols() const {
+		auto getCols() {
 			GetConsoleScreenBufferInfo(_h, &buffInfo);
 			return buffInfo.dwSize.X;
 		}
 
-		void execute_cap(emlcw::boolean cap) {
+		bool execute_cap(emlcw::boolean cap) {
 			switch (cap) {
-			case emlcw::boolean::has_print_wheel: 
+			case emlcw::boolean::has_print_wheel: return false; break;
 			}
 		}
 
@@ -574,6 +637,10 @@ namespace emlcw {
 										valType p16 = 0) {
 			switch (cap) {
 			case emlcw::str::clear_screen: emulate_clear_screen(); break;
+			case emlcw::str::clr_bol: emulate_clr_bol(); break;
+			case emlcw::str::clr_eol: emulate_clr_eol(); break;
+			case emlcw::str::insert_line: emulate_il(short(std::get<int>(p1))); break;
+			case emlcw::str::delete_line: emulate_dl(short(std::get<int>(p1))); break;
 			}
 		}
 	};
