@@ -600,6 +600,52 @@ namespace emlcw {
 				SetConsoleCursorPosition(_h, { 0, buffInfo.dwCursorPosition.Y });
 			}
 		}
+
+		void emulate_ech(short numChars = 1) {
+			if (numChars > 0) {
+				GetConsoleScreenBufferInfo(_h, &buffInfo);
+				auto remainingChars = buffInfo.dwSize.X - buffInfo.dwCursorPosition.X;
+				numChars = min(numChars, remainingChars);
+				DWORD written;
+				FillConsoleOutputCharacter(_h, CHAR(' '), numChars, buffInfo.dwCursorPosition, &written);
+				FillConsoleOutputAttribute(_h, buffInfo.wAttributes, numChars, buffInfo.dwCursorPosition, &written);
+			}
+
+		}
+
+		void emulate_ich(short numSpaces = 1) {
+			if (numSpaces > 0) {
+				GetConsoleScreenBufferInfo(_h, &buffInfo);
+
+				auto remainingChars = buffInfo.dwSize.X - buffInfo.dwCursorPosition.X;
+				numSpaces = min(numSpaces, remainingChars);
+				short numCharsToMove = remainingChars - numSpaces;
+
+				SMALL_RECT contentToMove{ buffInfo.dwCursorPosition.X , buffInfo.dwCursorPosition.Y , buffInfo.dwCursorPosition.X + numCharsToMove, buffInfo.dwCursorPosition.Y };
+				CHAR_INFO charToFill{ CHAR(' '), buffInfo.wAttributes };
+				ScrollConsoleScreenBuffer(_h, &contentToMove, nullptr, { buffInfo.dwCursorPosition.X + numSpaces, buffInfo.dwCursorPosition.Y }, &charToFill);
+
+				DWORD written;
+				FillConsoleOutputCharacter(_h, ' ', numSpaces, buffInfo.dwCursorPosition, &written);
+				FillConsoleOutputAttribute(_h, buffInfo.wAttributes, numSpaces, buffInfo.dwCursorPosition, &written);
+			}
+		}
+
+		void emulate_indn(short rowsToScroll = 1) {
+			if (rowsToScroll > 0) {
+				GetConsoleScreenBufferInfo(_h, &buffInfo);
+				auto totalRows = buffInfo.srWindow.Bottom - buffInfo.srWindow.Top;
+				rowsToScroll = min(rowsToScroll, totalRows);
+				short firstRowOfContentToMove = buffInfo.srWindow.Top + rowsToScroll;
+
+				SMALL_RECT contentToMove{ buffInfo.srWindow.Left, firstRowOfContentToMove, buffInfo.srWindow.Right, buffInfo.srWindow.Bottom + 1 };
+
+				CHAR_INFO charToFill{ CHAR(' '), buffInfo.wAttributes };
+				ScrollConsoleScreenBuffer(_h, &contentToMove, nullptr, { buffInfo.srWindow.Left, buffInfo.srWindow.Top }, &charToFill);
+			}
+		}
+
+
 	public:
 		console() {
 			_h = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -641,6 +687,9 @@ namespace emlcw {
 			case emlcw::str::clr_eol: emulate_clr_eol(); break;
 			case emlcw::str::insert_line: emulate_il(short(std::get<int>(p1))); break;
 			case emlcw::str::delete_line: emulate_dl(short(std::get<int>(p1))); break;
+			case emlcw::str::erase_chars: emulate_ech(short(std::get<int>(p1))); break;
+			case emlcw::str::parm_ich: emulate_ich(short(std::get<int>(p1))); break;
+			case emlcw::str::parm_index: emulate_indn(short(std::get<int>(p1))); break;
 			}
 		}
 	};
